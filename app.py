@@ -3,9 +3,7 @@ import pymongo
 import os
 from bson.objectid import ObjectId
 # MongoDB setup
-MONGO_URL = st.secrets["mongo"]["url"]
-client = pymongo.MongoClient(MONGO_URL)
-#MONGO_URL = "mongodb+srv://tintin:tintin@cluster0.qot4y.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+MONGO_URL = "mongodb+srv://tintin:tintin@cluster0.qot4y.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
 client = pymongo.MongoClient(MONGO_URL)
 db = client['food_ordering']
 users_col = db['users']
