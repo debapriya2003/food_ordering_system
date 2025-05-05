@@ -2,10 +2,6 @@ import streamlit as st
 import pymongo
 import os
 from bson.objectid import ObjectId
-st.set_page_config(
-    page_title="Central Canteen Website",
-    page_icon="🍽️"   # You can use an emoji here
-)
 # MongoDB setup
 MONGO_URL = st.secrets["mongo"]["url"]
 client = pymongo.MongoClient(MONGO_URL)
