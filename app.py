@@ -210,7 +210,10 @@ def order_status():
 # MAIN APP
 st.set_page_config(page_title="Food Ordering App", layout="wide")
 st.title("🍽️ Food Ordering System")
-
+st.set_page_config(
+    page_title="Central Canteen Website",
+    page_icon="🍽️"   # You can use an emoji here
+)
 if st.session_state.username:
     st.sidebar.write(f"👤 Logged in as **{st.session_state.username}**")
     if st.sidebar.button("Logout"):
