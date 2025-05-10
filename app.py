@@ -1,7 +1,9 @@
 import streamlit as st
 import pymongo
 import os
+import uuid
 from bson.objectid import ObjectId
+from PIL import Image
 
 # MongoDB setup
 MONGO_URL = "mongodb+srv://tintin:tintin@cluster0.qot4y.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
@@ -13,15 +15,15 @@ products_col = db['products']
 orders_col = db['orders']
 settings_col = db['settings']
 
-# Session state
-if 'role' not in st.session_state:
-    st.session_state.role = None
-if 'username' not in st.session_state:
-    st.session_state.username = None
-if 'cart' not in st.session_state:
-    st.session_state.cart = []
+# Ensure image directory exists
+os.makedirs("images", exist_ok=True)
 
-# AUTH FUNCTIONS
+# Session state defaults
+for key in ['role', 'username', 'cart']:
+    if key not in st.session_state:
+        st.session_state[key] = [] if key == 'cart' else None
+
+# Authentication
 def register_user(username, password):
     if not username or not password:
         st.warning('Please enter both username and password.')
@@ -49,7 +51,7 @@ def logout():
     st.session_state.role = None
     st.session_state.cart = []
 
-# ADMIN FUNCTIONS
+# Admin Panels
 def admin_dashboard():
     st.header("📊 Admin Dashboard")
     col1, col2, col3, col4 = st.columns(4)
@@ -67,43 +69,47 @@ def manage_categories():
         if col2.button("🗑️ Delete", key=str(cat['_id'])):
             categories_col.delete_one({'_id': cat['_id']})
             st.success("✅ Category deleted")
-            #st.experimental_rerun()
+            st.experimental_rerun()
     new_cat = st.text_input("➕ Add New Category")
     if st.button("Add Category"):
         if new_cat.strip():
             categories_col.insert_one({'name': new_cat})
             st.success("✅ Category added")
-            #st.experimental_rerun()
+            st.experimental_rerun()
         else:
             st.warning("Please enter a category name.")
 
 def manage_products():
     st.header("🍽️ Product Management")
-    os.makedirs('images', exist_ok=True)
     products = list(products_col.find({}))
     for prod in products:
         col1, col2 = st.columns([5, 1])
-        if prod.get('image'):
+        if prod.get('image') and os.path.exists(prod['image']):
             col1.image(prod['image'], width=100)
         col1.write(f"**{prod['name']}** - ${prod['price']} ({prod['category']})")
         col1.caption(prod.get('description', 'No description'))
-        if col2.button("🗑️ Delete", key=str(prod['_id'])):
+        if col2.button("🗑️ Delete", key=f"del_{prod['_id']}"):
+            if prod.get('image') and os.path.exists(prod['image']):
+                os.remove(prod['image'])  # Remove image file
             products_col.delete_one({'_id': prod['_id']})
             st.success("✅ Product deleted")
-            #st.experimental_rerun()
+            st.experimental_rerun()
+
     st.subheader("➕ Add New Product")
     name = st.text_input("Product Name")
     price = st.number_input("Price", 0.0)
     description = st.text_area("Description")
     category = st.selectbox("Category", [c['name'] for c in categories_col.find({})])
     image_file = st.file_uploader("Upload Product Image", type=["png", "jpg", "jpeg"])
+
     if st.button("Add Product"):
         if name and category:
             image_path = ""
             if image_file:
-                image_path = f"images/{image_file.name}"
-                with open(image_path, "wb") as f:
+                filename = f"images/{uuid.uuid4()}_{image_file.name}"
+                with open(filename, "wb") as f:
                     f.write(image_file.getbuffer())
+                image_path = filename
             products_col.insert_one({
                 'name': name,
                 'price': price,
@@ -112,7 +118,7 @@ def manage_products():
                 'image': image_path
             })
             st.success("✅ Product added")
-            #st.experimental_rerun()
+            st.experimental_rerun()
         else:
             st.warning("Please enter product name and category.")
 
@@ -126,7 +132,7 @@ def manage_orders():
         st.markdown(f"### 🛒 Order by `{order['username']}` | Total: **${order['total']}**")
         for item in order['items']:
             product = products_col.find_one({'_id': ObjectId(item['_id'])})
-            if product and product.get('image'):
+            if product and product.get('image') and os.path.exists(product['image']):
                 st.image(product['image'], width=80)
             st.write(f"**{item['name']}** - ${item['price']} x {item['qty']}")
         status = st.selectbox(
@@ -139,11 +145,10 @@ def manage_orders():
         if col1.button("✅ Update Status", key=f"update_{order['_id']}"):
             orders_col.update_one({'_id': order['_id']}, {'$set': {'status': status}})
             st.success("Status updated")
-            #st.experimental_rerun()
+            st.experimental_rerun()
         if col2.button("✅ Mark Complete", key=f"complete_{order['_id']}"):
             orders_col.delete_one({'_id': order['_id']})
             st.success("Order completed and removed")
-            #st.experimental_rerun()
 
 def manage_users():
     st.header("👥 User Management")
@@ -154,7 +159,7 @@ def manage_users():
         if col2.button("🗑️ Delete", key=str(user['_id'])):
             users_col.delete_one({'_id': user['_id']})
             st.success("✅ User deleted")
-            #st.experimental_rerun()
+            st.experimental_rerun()
 
 def system_settings():
     st.header("⚙️ System Settings")
@@ -167,27 +172,33 @@ def system_settings():
         settings_col.update_one({}, {'$set': {'site_name': site_name}})
         st.success("✅ Settings saved")
 
-# CLIENT FUNCTIONS
+# Client Panels
 def show_menu():
     st.header("🍽️ Menu")
     products = list(products_col.find({}))
     for prod in products:
         with st.container():
             col1, col2 = st.columns([2, 1])
-            if prod.get('image'):
+            if prod.get('image') and os.path.exists(prod['image']):
                 col1.image(prod['image'], width=150)
             col1.write(f"**{prod['name']}** - ${prod['price']}")
             col1.caption(prod.get('description', 'No description'))
-            if col2.button(f"🛒 Add to Cart", key=str(prod['_id'])):
-                st.session_state.cart.append({'_id': str(prod['_id']), 'name': prod['name'], 'price': prod['price'], 'qty': 1})
+            if col2.button("🛒 Add to Cart", key=str(prod['_id'])):
+                # Prevent duplicate entries in cart
+                for item in st.session_state.cart:
+                    if item['_id'] == str(prod['_id']):
+                        item['qty'] += 1
+                        break
+                else:
+                    st.session_state.cart.append({'_id': str(prod['_id']), 'name': prod['name'], 'price': prod['price'], 'qty': 1})
                 st.success(f"{prod['name']} added to cart")
 
 def view_cart():
     st.header("🛒 Cart")
-    total = sum(item['price'] * item['qty'] for item in st.session_state.cart)
     if not st.session_state.cart:
         st.info("Your cart is empty.")
         return
+    total = sum(item['price'] * item['qty'] for item in st.session_state.cart)
     for item in st.session_state.cart:
         st.write(f"{item['name']} - ${item['price']} x {item['qty']}")
     st.write(f"**Total:** ${total}")
@@ -220,11 +231,11 @@ def order_status():
         st.markdown(f"### 🛍️ Total: **${order['total']}** | Status: `{order.get('status', 'Confirmed')}`")
         for item in order['items']:
             product = products_col.find_one({'_id': ObjectId(item['_id'])})
-            if product and product.get('image'):
+            if product and product.get('image') and os.path.exists(product['image']):
                 st.image(product['image'], width=80)
             st.write(f"**{item['name']}** - ${item['price']} x {item['qty']}")
 
-# MAIN APP
+# Main Interface
 st.set_page_config(page_title="Food Ordering App", layout="wide")
 st.title("🍽️ Food Ordering System")
 
@@ -232,7 +243,6 @@ if st.session_state.username:
     st.sidebar.write(f"👤 Logged in as **{st.session_state.username}**")
     if st.sidebar.button("🚪 Logout"):
         logout()
-        #st.experimental_rerun()
 else:
     tab = st.sidebar.radio("Choose", ["Login", "Register"])
     username = st.sidebar.text_input("Username")
@@ -240,32 +250,26 @@ else:
     if tab == "Login":
         if st.sidebar.button("Login"):
             login_user(username, password)
-            #st.experimental_rerun()
     else:
         if st.sidebar.button("Register"):
             register_user(username, password)
 
 if st.session_state.role == 'admin':
     tab = st.selectbox("Admin Panel", ["Dashboard", "Categories", "Products", "Orders", "Users", "Settings"])
-    if tab == "Dashboard":
-        admin_dashboard()
-    elif tab == "Categories":
-        manage_categories()
-    elif tab == "Products":
-        manage_products()
-    elif tab == "Orders":
-        manage_orders()
-    elif tab == "Users":
-        manage_users()
-    elif tab == "Settings":
-        system_settings()
+    {
+        "Dashboard": admin_dashboard,
+        "Categories": manage_categories,
+        "Products": manage_products,
+        "Orders": manage_orders,
+        "Users": manage_users,
+        "Settings": system_settings
+    }[tab]()
 elif st.session_state.role == 'client':
     tab = st.selectbox("Client Panel", ["Menu", "Cart", "Order Status"])
-    if tab == "Menu":
-        show_menu()
-    elif tab == "Cart":
-        view_cart()
-    elif tab == "Order Status":
-        order_status()
+    {
+        "Menu": show_menu,
+        "Cart": view_cart,
+        "Order Status": order_status
+    }[tab]()
 else:
     st.write("🔑 Please login or register to continue.")
